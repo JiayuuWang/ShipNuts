@@ -1,0 +1,29 @@
+{
+  "name": "shipnuts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Automated system that turns ideas into GitHub open source projects",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:web\"",
+    "dev:server": "npm run dev -w packages/server",
+    "dev:web": "npm run dev -w packages/web",
+    "build": "npm run build -w packages/shared && npm run build -w packages/server && npm run build -w packages/web",
+    "build:shared": "npm run build -w packages/shared",
+    "build:server": "npm run build -w packages/server",
+    "build:web": "npm run build -w packages/web",
+    "start": "npm run start -w packages/server",
+    "lint": "eslint packages/*/src --ext .ts,.tsx",
+    "clean": "rimraf packages/*/dist"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.87",
+    "@anthropic-ai/claude-code": "^2.1.87"
+  }
+}
