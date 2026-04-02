@@ -146,7 +146,7 @@ export interface ApiResponse<T> {
 
 // === WebSocket Event Types ===
 
-export type WSEventType = 'project:progress' | 'idea:new' | 'task:update';
+export type WSEventType = 'project:progress' | 'idea:new' | 'task:update' | 'pipeline:status' | 'agent:output';
 
 export interface WSEvent<T = unknown> {
   type: WSEventType;
@@ -162,4 +162,34 @@ export interface ProjectProgressPayload {
 
 export interface NewIdeaPayload {
   idea: Idea;
+}
+
+// === Pipeline Visualization Types ===
+
+export type PipelinePhase = 'gather' | 'analyze' | 'build';
+export type PipelinePhaseStatus = 'pending' | 'started' | 'running' | 'completed' | 'failed';
+
+export interface PipelineStatusPayload {
+  pipelineId: string;
+  phase: PipelinePhase;
+  status: PipelinePhaseStatus;
+  message: string;
+  progress?: number;
+  detail?: {
+    source?: string;
+    ideaTitle?: string;
+    totalItems?: number;
+    processedItems?: number;
+  };
+}
+
+export type AgentOutputType = 'init' | 'text' | 'tool_use' | 'tool_result' | 'progress' | 'result' | 'error';
+
+export interface AgentOutputPayload {
+  pipelineId: string;
+  agentId: string;
+  type: AgentOutputType;
+  content: string;
+  toolName?: string;
+  timestamp: string;
 }

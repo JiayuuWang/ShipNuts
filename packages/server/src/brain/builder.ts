@@ -1,4 +1,5 @@
 import { runAgent } from './agent.js';
+import type { AgentStreamMessage } from './agent.js';
 import type Database from 'better-sqlite3';
 import type { Idea, IdeaAnalysis } from '@shipnuts/shared';
 import type { WSManager } from '../ws/index.js';
@@ -17,6 +18,7 @@ export interface BuildOptions {
   includeTests: boolean;
   includeCI: boolean;
   timeout?: number;
+  onMessage?: (msg: AgentStreamMessage) => void;
 }
 
 /**
@@ -28,7 +30,7 @@ export async function buildProject(
   projectId: string,
   options: BuildOptions
 ): Promise<void> {
-  const { idea, githubToken, githubUsername, includeTests, includeCI, timeout = 1800000 } = options;
+  const { idea, githubToken, githubUsername, includeTests, includeCI, timeout = 1800000, onMessage } = options;
 
   if (!idea.analysis) {
     throw new Error('Idea must have analysis before building');
@@ -59,6 +61,7 @@ export async function buildProject(
       maxTurns: 50,
       timeout: timeout / 2,
       allowedTools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'],
+      onMessage,
     });
 
     if (!initResult.success) {
@@ -75,6 +78,7 @@ export async function buildProject(
       maxTurns: 80,
       timeout: timeout / 2,
       allowedTools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'],
+      onMessage,
     });
 
     if (!buildResult.success) {
@@ -113,6 +117,7 @@ export async function buildProject(
           maxTurns: 10,
           timeout: 60000,
           allowedTools: ['Bash'],
+          onMessage,
         });
 
         if (pushResult.success) {

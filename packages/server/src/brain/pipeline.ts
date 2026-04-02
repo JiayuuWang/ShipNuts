@@ -1,13 +1,15 @@
 import { v4 as uuidv4 } from 'uuid';
 import type Database from 'better-sqlite3';
-import type { UserConfig, Idea } from '@shipnuts/shared';
+import type { UserConfig, Idea, PipelineStatusPayload, AgentOutputPayload } from '@shipnuts/shared';
 import type { WSManager } from '../ws/index.js';
+import type { AgentStreamMessage } from './agent.js';
 import { mineIdeas } from './miner.js';
 import { analyzeIdeas } from './analyzer.js';
 import { buildProject } from './builder.js';
 
 /**
  * Pipeline orchestrates the full idea-to-project workflow.
+ * Broadcasts real-time status and agent output via WebSocket.
  */
 export class Pipeline {
   private db: Database.Database;
@@ -20,52 +22,159 @@ export class Pipeline {
     this.config = config;
   }
 
+  private broadcastStatus(payload: PipelineStatusPayload): void {
+    this.wsManager.broadcast({ type: 'pipeline:status', payload });
+  }
+
+  private broadcastAgentOutput(pipelineId: string, agentId: string, msg: AgentStreamMessage): void {
+    const payload: AgentOutputPayload = {
+      pipelineId,
+      agentId,
+      type: msg.type,
+      content: msg.content,
+      toolName: msg.toolName,
+      timestamp: new Date().toISOString(),
+    };
+    this.wsManager.broadcast({ type: 'agent:output', payload });
+  }
+
   /**
    * Run the gather + analyze pipeline.
-   * Called by the scheduler or manually.
+   * Returns the pipelineId for WS event correlation.
    */
-  async runGatherAndAnalyze(): Promise<void> {
-    console.log('Pipeline: Starting gather phase...');
+  async runGatherAndAnalyze(pipelineId?: string): Promise<string> {
+    const id = pipelineId || uuidv4();
+    console.log(`Pipeline [${id}]: Starting gather phase...`);
 
-    // Phase 1: Mine ideas
-    const rawIdeas = await mineIdeas({
-      sources: this.config.sources,
-      maxIdeas: 20,
-      timeWindow: '48h',
-      timeout: this.config.claudeCode.timeout,
+    // === GATHER PHASE ===
+    this.broadcastStatus({
+      pipelineId: id,
+      phase: 'gather',
+      status: 'started',
+      message: `Gathering ideas from ${this.config.sources.length} source(s)...`,
+      progress: 0,
+      detail: { totalItems: this.config.sources.length, processedItems: 0 },
     });
 
-    console.log(`Pipeline: Gathered ${rawIdeas.length} raw ideas`);
-
-    if (rawIdeas.length === 0) {
-      console.log('Pipeline: No ideas found, stopping');
-      return;
+    let rawIdeas;
+    try {
+      rawIdeas = await mineIdeas({
+        sources: this.config.sources,
+        maxIdeas: 20,
+        timeWindow: '48h',
+        timeout: this.config.claudeCode.timeout,
+        onMessage: (source, msg) => {
+          this.broadcastAgentOutput(id, `gather-${source}`, msg);
+          if (msg.type === 'init') {
+            this.broadcastStatus({
+              pipelineId: id,
+              phase: 'gather',
+              status: 'running',
+              message: `Mining from ${source}...`,
+              detail: { source },
+            });
+          }
+        },
+      });
+    } catch (error: any) {
+      this.broadcastStatus({
+        pipelineId: id,
+        phase: 'gather',
+        status: 'failed',
+        message: `Gather failed: ${error.message}`,
+      });
+      throw error;
     }
 
-    // Phase 2: Analyze ideas
-    console.log('Pipeline: Starting analysis phase...');
-    const analyzedIdeas = await analyzeIdeas({
-      ideas: rawIdeas,
-      criteria: this.config.criteria,
-      timeout: this.config.claudeCode.timeout,
+    console.log(`Pipeline [${id}]: Gathered ${rawIdeas.length} raw ideas`);
+
+    this.broadcastStatus({
+      pipelineId: id,
+      phase: 'gather',
+      status: 'completed',
+      message: `Gathered ${rawIdeas.length} raw ideas`,
+      progress: 100,
     });
 
-    console.log(`Pipeline: ${analyzedIdeas.length} ideas passed analysis filters`);
+    if (rawIdeas.length === 0) {
+      console.log(`Pipeline [${id}]: No ideas found, stopping`);
+      return id;
+    }
+
+    // === ANALYZE PHASE ===
+    console.log(`Pipeline [${id}]: Starting analysis phase...`);
+    this.broadcastStatus({
+      pipelineId: id,
+      phase: 'analyze',
+      status: 'started',
+      message: `Analyzing ${rawIdeas.length} ideas...`,
+      progress: 0,
+      detail: { totalItems: rawIdeas.length, processedItems: 0 },
+    });
+
+    let analyzedIdeas;
+    try {
+      analyzedIdeas = await analyzeIdeas({
+        ideas: rawIdeas,
+        criteria: this.config.criteria,
+        timeout: this.config.claudeCode.timeout,
+        onMessage: (ideaTitle, msg) => {
+          this.broadcastAgentOutput(id, `analyze-${ideaTitle}`, msg);
+          if (msg.type === 'init') {
+            this.broadcastStatus({
+              pipelineId: id,
+              phase: 'analyze',
+              status: 'running',
+              message: `Analyzing: ${ideaTitle}`,
+              detail: { ideaTitle },
+            });
+          }
+        },
+        onIdeaProgress: (processed, total) => {
+          this.broadcastStatus({
+            pipelineId: id,
+            phase: 'analyze',
+            status: 'running',
+            message: `Analyzed ${processed}/${total} ideas`,
+            progress: Math.round((processed / total) * 100),
+            detail: { totalItems: total, processedItems: processed },
+          });
+        },
+      });
+    } catch (error: any) {
+      this.broadcastStatus({
+        pipelineId: id,
+        phase: 'analyze',
+        status: 'failed',
+        message: `Analysis failed: ${error.message}`,
+      });
+      throw error;
+    }
+
+    console.log(`Pipeline [${id}]: ${analyzedIdeas.length} ideas passed analysis filters`);
+
+    this.broadcastStatus({
+      pipelineId: id,
+      phase: 'analyze',
+      status: 'completed',
+      message: `${analyzedIdeas.length} ideas passed filters`,
+      progress: 100,
+    });
 
     // Phase 3: Save to database
     for (const idea of analyzedIdeas) {
-      const id = uuidv4();
+      const ideaId = uuidv4();
       this.db.prepare(`
         INSERT INTO ideas (id, title, description, source, source_url, analysis, status)
         VALUES (?, ?, ?, ?, ?, ?, 'new')
-      `).run(id, idea.title, idea.description, idea.source, idea.sourceUrl, JSON.stringify(idea.analysis));
+      `).run(ideaId, idea.title, idea.description, idea.source, idea.sourceUrl, JSON.stringify(idea.analysis));
 
       // Notify connected clients
       this.wsManager.broadcast({
         type: 'idea:new',
         payload: {
           idea: {
-            id,
+            id: ideaId,
             title: idea.title,
             description: idea.description,
             source: idea.source,
@@ -78,14 +187,16 @@ export class Pipeline {
       });
     }
 
-    console.log(`Pipeline: Saved ${analyzedIdeas.length} ideas to database`);
+    console.log(`Pipeline [${id}]: Saved ${analyzedIdeas.length} ideas to database`);
+    return id;
   }
 
   /**
    * Run the build pipeline for a specific idea.
    */
-  async runBuild(ideaId: string, projectId: string): Promise<void> {
-    console.log(`Pipeline: Starting build for idea ${ideaId}...`);
+  async runBuild(ideaId: string, projectId: string, pipelineId?: string): Promise<string> {
+    const id = pipelineId || uuidv4();
+    console.log(`Pipeline [${id}]: Starting build for idea ${ideaId}...`);
 
     const row = this.db.prepare('SELECT * FROM ideas WHERE id = ?').get(ideaId) as any;
     if (!row) {
@@ -103,13 +214,43 @@ export class Pipeline {
       status: row.status,
     };
 
-    await buildProject(this.db, this.wsManager, projectId, {
-      idea,
-      githubToken: this.config.github.token,
-      githubUsername: this.config.github.username,
-      includeTests: true,
-      includeCI: true,
-      timeout: 1800000, // 30 minutes for build
+    this.broadcastStatus({
+      pipelineId: id,
+      phase: 'build',
+      status: 'started',
+      message: `Building project: ${idea.title}`,
+      progress: 0,
     });
+
+    try {
+      await buildProject(this.db, this.wsManager, projectId, {
+        idea,
+        githubToken: this.config.github.token,
+        githubUsername: this.config.github.username,
+        includeTests: true,
+        includeCI: true,
+        timeout: 1800000,
+        onMessage: (msg) => {
+          this.broadcastAgentOutput(id, `build-${ideaId}`, msg);
+        },
+      });
+
+      this.broadcastStatus({
+        pipelineId: id,
+        phase: 'build',
+        status: 'completed',
+        message: `Build completed: ${idea.title}`,
+        progress: 100,
+      });
+    } catch (error: any) {
+      this.broadcastStatus({
+        pipelineId: id,
+        phase: 'build',
+        status: 'failed',
+        message: `Build failed: ${error.message}`,
+      });
+    }
+
+    return id;
   }
 }

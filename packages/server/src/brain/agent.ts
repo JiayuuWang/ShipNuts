@@ -1,4 +1,11 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
+import type { AgentOutputType } from '@shipnuts/shared';
+
+export interface AgentStreamMessage {
+  type: AgentOutputType;
+  content: string;
+  toolName?: string;
+}
 
 export interface AgentRunOptions {
   prompt: string;
@@ -7,6 +14,7 @@ export interface AgentRunOptions {
   maxTurns?: number;
   timeout?: number;
   allowedTools?: string[];
+  onMessage?: (msg: AgentStreamMessage) => void;
 }
 
 export interface AgentResult {
@@ -19,7 +27,7 @@ export interface AgentResult {
 
 /**
  * Run a Claude Code agent with the given prompt and options.
- * Returns the final text result or error.
+ * Streams intermediate events via onMessage callback.
  */
 export async function runAgent(options: AgentRunOptions): Promise<AgentResult> {
   const {
@@ -29,6 +37,7 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentResult> {
     maxTurns = 20,
     timeout = 600000,
     allowedTools = ['WebSearch', 'WebFetch', 'Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'],
+    onMessage,
   } = options;
 
   const abortController = new AbortController();
@@ -55,8 +64,26 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentResult> {
       error: 'No result received',
     };
 
+    onMessage?.({ type: 'init', content: `Agent started (model: ${model}, maxTurns: ${maxTurns})` });
+
     for await (const message of conversation) {
-      if (message.type === 'result') {
+      if (message.type === 'assistant') {
+        // Extract text from assistant message content blocks
+        const textBlocks = message.message.content.filter(
+          (b: any) => b.type === 'text'
+        );
+        for (const block of textBlocks) {
+          onMessage?.({ type: 'text', content: (block as any).text });
+        }
+      } else if (message.type === 'tool_use_summary') {
+        onMessage?.({ type: 'tool_use', content: message.summary });
+      } else if (message.type === 'tool_progress') {
+        onMessage?.({
+          type: 'progress',
+          content: `Tool running: ${message.tool_name} (${Math.round(message.elapsed_time_seconds)}s)`,
+          toolName: message.tool_name,
+        });
+      } else if (message.type === 'result') {
         if (message.subtype === 'success') {
           finalResult = {
             success: true,
@@ -64,6 +91,10 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentResult> {
             durationMs: message.duration_ms,
             costUsd: message.total_cost_usd,
           };
+          onMessage?.({
+            type: 'result',
+            content: `Completed in ${Math.round(message.duration_ms / 1000)}s ($${message.total_cost_usd.toFixed(4)})`,
+          });
         } else {
           finalResult = {
             success: false,
@@ -72,16 +103,19 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentResult> {
             durationMs: message.duration_ms,
             costUsd: message.total_cost_usd,
           };
+          onMessage?.({
+            type: 'error',
+            content: `Agent failed: ${message.subtype}`,
+          });
         }
       }
     }
 
     return finalResult;
   } catch (error: any) {
-    if (error.name === 'AbortError') {
-      return { success: false, result: '', error: 'Agent timed out' };
-    }
-    return { success: false, result: '', error: error.message || String(error) };
+    const errMsg = error.name === 'AbortError' ? 'Agent timed out' : (error.message || String(error));
+    onMessage?.({ type: 'error', content: errMsg });
+    return { success: false, result: '', error: errMsg };
   } finally {
     clearTimeout(timer);
   }
@@ -105,7 +139,7 @@ export async function runAgentJSON<T>(options: AgentRunOptions): Promise<{ succe
       jsonStr = jsonMatch[1].trim();
     }
     // Also try to find raw JSON array or object
-    const rawMatch = jsonStr.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
+    const rawMatch = jsonStr.match(/([\[\{][\s\S]*[\]\}])/);
     if (rawMatch) {
       jsonStr = rawMatch[1];
     }

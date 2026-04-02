@@ -1,4 +1,5 @@
 import { runAgentJSON } from './agent.js';
+import type { AgentStreamMessage } from './agent.js';
 import type { RawIdea } from '@shipnuts/shared';
 
 export interface MineOptions {
@@ -6,18 +7,19 @@ export interface MineOptions {
   maxIdeas: number;
   timeWindow: '24h' | '48h' | '7d';
   timeout?: number;
+  onMessage?: (source: string, msg: AgentStreamMessage) => void;
 }
 
 /**
  * Mine ideas from configured data sources using Claude Code.
  */
 export async function mineIdeas(options: MineOptions): Promise<RawIdea[]> {
-  const { sources, maxIdeas, timeWindow, timeout = 300000 } = options;
+  const { sources, maxIdeas, timeWindow, timeout = 300000, onMessage } = options;
 
   const allIdeas: RawIdea[] = [];
 
   // Run mining for each source concurrently
-  const promises = sources.map((source) => mineFromSource(source, maxIdeas, timeWindow, timeout));
+  const promises = sources.map((source) => mineFromSource(source, maxIdeas, timeWindow, timeout, onMessage));
   const results = await Promise.allSettled(promises);
 
   for (const result of results) {
@@ -31,7 +33,13 @@ export async function mineIdeas(options: MineOptions): Promise<RawIdea[]> {
   return allIdeas.slice(0, maxIdeas);
 }
 
-async function mineFromSource(source: string, maxIdeas: number, timeWindow: string, timeout: number): Promise<RawIdea[]> {
+async function mineFromSource(
+  source: string,
+  maxIdeas: number,
+  timeWindow: string,
+  timeout: number,
+  onMessage?: (source: string, msg: AgentStreamMessage) => void,
+): Promise<RawIdea[]> {
   const prompt = buildMiningPrompt(source, maxIdeas, timeWindow);
 
   const result = await runAgentJSON<RawIdea[]>({
@@ -39,6 +47,7 @@ async function mineFromSource(source: string, maxIdeas: number, timeWindow: stri
     maxTurns: 15,
     timeout,
     allowedTools: ['WebSearch', 'WebFetch', 'Bash'],
+    onMessage: onMessage ? (msg) => onMessage(source, msg) : undefined,
   });
 
   if (!result.success || !result.data) {

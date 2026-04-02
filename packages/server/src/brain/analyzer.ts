@@ -1,4 +1,5 @@
 import { runAgentJSON } from './agent.js';
+import type { AgentStreamMessage } from './agent.js';
 import type { RawIdea, IdeaAnalysis } from '@shipnuts/shared';
 
 export interface AnalyzeOptions {
@@ -9,6 +10,8 @@ export interface AnalyzeOptions {
     maxComplexity: 'low' | 'medium' | 'high';
   };
   timeout?: number;
+  onMessage?: (ideaTitle: string, msg: AgentStreamMessage) => void;
+  onIdeaProgress?: (processed: number, total: number) => void;
 }
 
 export interface AnalyzedIdea extends RawIdea {
@@ -19,18 +22,22 @@ export interface AnalyzedIdea extends RawIdea {
  * Analyze a batch of raw ideas for gap, value, and feasibility.
  */
 export async function analyzeIdeas(options: AnalyzeOptions): Promise<AnalyzedIdea[]> {
-  const { ideas, criteria, timeout = 300000 } = options;
+  const { ideas, criteria, timeout = 300000, onMessage, onIdeaProgress } = options;
 
   // Analyze ideas concurrently (max 3 at a time to avoid rate limits)
   const results: AnalyzedIdea[] = [];
   const batchSize = 3;
+  let processed = 0;
 
   for (let i = 0; i < ideas.length; i += batchSize) {
     const batch = ideas.slice(i, i + batchSize);
-    const promises = batch.map((idea) => analyzeOneIdea(idea, timeout));
+    const promises = batch.map((idea) =>
+      analyzeOneIdea(idea, timeout, onMessage ? (msg) => onMessage(idea.title, msg) : undefined)
+    );
     const batchResults = await Promise.allSettled(promises);
 
     for (const result of batchResults) {
+      processed++;
       if (result.status === 'fulfilled' && result.value) {
         const analyzed = result.value;
         // Apply user criteria filters
@@ -38,6 +45,7 @@ export async function analyzeIdeas(options: AnalyzeOptions): Promise<AnalyzedIde
           results.push(analyzed);
         }
       }
+      onIdeaProgress?.(processed, ideas.length);
     }
   }
 
@@ -51,7 +59,11 @@ export async function analyzeIdeas(options: AnalyzeOptions): Promise<AnalyzedIde
   return results;
 }
 
-async function analyzeOneIdea(idea: RawIdea, timeout: number): Promise<AnalyzedIdea | null> {
+async function analyzeOneIdea(
+  idea: RawIdea,
+  timeout: number,
+  onMessage?: (msg: AgentStreamMessage) => void,
+): Promise<AnalyzedIdea | null> {
   const prompt = buildAnalysisPrompt(idea);
 
   const result = await runAgentJSON<IdeaAnalysis>({
@@ -59,6 +71,7 @@ async function analyzeOneIdea(idea: RawIdea, timeout: number): Promise<AnalyzedI
     maxTurns: 20,
     timeout,
     allowedTools: ['WebSearch', 'WebFetch', 'Bash'],
+    onMessage,
   });
 
   if (!result.success || !result.data) {

@@ -42,19 +42,20 @@ export function createIdeasRouter(db: Database.Database, wsManager: WSManager): 
     db.prepare('UPDATE ideas SET status = ? WHERE id = ?').run('building', req.params.id);
 
     // Trigger build asynchronously
+    const pipelineId = uuidv4();
     try {
       const { Pipeline } = await import('../brain/pipeline.js');
       const { loadConfig } = await import('../config.js');
       const config = loadConfig(db);
       const pipeline = new Pipeline(db, wsManager, config);
-      pipeline.runBuild(req.params.id, projectId).catch((err: Error) => {
+      pipeline.runBuild(req.params.id, projectId, pipelineId).catch((err: Error) => {
         console.error('Build failed:', err);
       });
     } catch (error) {
       console.error('Failed to start build:', error);
     }
 
-    res.json({ success: true, data: { projectId } });
+    res.json({ success: true, data: { projectId, pipelineId } });
   });
 
   // PATCH /api/ideas/:id - Update idea status

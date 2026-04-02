@@ -15,7 +15,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   getIdeas: () => request<Idea[]>('/ideas'),
   getIdea: (id: string) => request<Idea>(`/ideas/${id}`),
-  buildIdea: (id: string) => request<{ projectId: string }>(`/ideas/${id}/build`, { method: 'POST' }),
+  buildIdea: (id: string) => request<{ projectId: string; pipelineId: string }>(`/ideas/${id}/build`, { method: 'POST' }),
   updateIdeaStatus: (id: string, status: string) =>
     request<void>(`/ideas/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
 
@@ -26,5 +26,5 @@ export const api = {
   updateConfig: (config: UserConfig) =>
     request<UserConfig>('/config', { method: 'PUT', body: JSON.stringify(config) }),
 
-  triggerGather: () => request<void>('/gather', { method: 'POST' }),
+  triggerGather: () => request<{ pipelineId: string; message: string }>('/gather', { method: 'POST' }),
 };

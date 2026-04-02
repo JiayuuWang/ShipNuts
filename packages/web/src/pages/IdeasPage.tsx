@@ -1,17 +1,30 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import type { Idea } from '@shipnuts/shared';
-import { Sparkles, ExternalLink, Rocket, Eye, X, Search, RefreshCw } from 'lucide-react';
+import { useWS } from '../hooks/WSContext';
+import PipelinePanel from '../components/PipelinePanel';
+import type { Idea, NewIdeaPayload } from '@shipnuts/shared';
+import { Sparkles, ExternalLink, Rocket, X, Search, RefreshCw } from 'lucide-react';
 
 export default function IdeasPage() {
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
   const [selectedIdea, setSelectedIdea] = useState<Idea | null>(null);
+  const [gathering, setGathering] = useState(false);
+  const [pipelineId, setPipelineId] = useState<string | null>(null);
+  const { subscribe } = useWS();
 
   useEffect(() => {
     loadIdeas();
   }, []);
+
+  // Listen for new ideas via WS and auto-refresh
+  useEffect(() => {
+    const unsub = subscribe<NewIdeaPayload>('idea:new', () => {
+      loadIdeas();
+    });
+    return unsub;
+  }, [subscribe]);
 
   async function loadIdeas() {
     setLoading(true);
@@ -27,7 +40,8 @@ export default function IdeasPage() {
 
   async function handleBuild(id: string) {
     try {
-      await api.buildIdea(id);
+      const result = await api.buildIdea(id);
+      setPipelineId(result.pipelineId);
       loadIdeas();
     } catch (err) {
       console.error('Failed to start build:', err);
@@ -35,10 +49,14 @@ export default function IdeasPage() {
   }
 
   async function handleTriggerGather() {
+    setGathering(true);
     try {
-      await api.triggerGather();
+      const result = await api.triggerGather();
+      setPipelineId(result.pipelineId);
     } catch {
       // ignore
+    } finally {
+      setGathering(false);
     }
   }
 
@@ -69,13 +87,17 @@ export default function IdeasPage() {
         </div>
         <button
           onClick={handleTriggerGather}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+          disabled={gathering}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
           style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
         >
-          <RefreshCw className="w-4 h-4" />
-          Gather Ideas
+          <RefreshCw className={`w-4 h-4 ${gathering ? 'animate-spin' : ''}`} />
+          {gathering ? 'Gathering...' : 'Gather Ideas'}
         </button>
       </div>
+
+      {/* Pipeline Visualization */}
+      <PipelinePanel pipelineId={pipelineId} subscribe={subscribe} />
 
       {/* Search */}
       <div className="relative mb-6">
@@ -161,7 +183,7 @@ export default function IdeasPage() {
                         e.stopPropagation();
                         handleBuild(idea.id);
                       }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer hover:opacity-80"
                       style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
                     >
                       <Rocket className="w-3.5 h-3.5" />
@@ -181,7 +203,7 @@ export default function IdeasPage() {
           <div className="w-full max-w-2xl rounded-2xl border p-6 max-h-[80vh] overflow-auto" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
             <div className="flex items-start justify-between mb-4">
               <h2 className="text-xl font-bold">{selectedIdea.title}</h2>
-              <button onClick={() => setSelectedIdea(null)} className="p-1" style={{ color: 'var(--color-text-secondary)' }}>
+              <button onClick={() => setSelectedIdea(null)} className="p-1 cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -244,7 +266,7 @@ export default function IdeasPage() {
                       setSelectedIdea(null);
                       loadIdeas();
                     }}
-                    className="px-4 py-2 rounded-lg text-sm border"
+                    className="px-4 py-2 rounded-lg text-sm border cursor-pointer hover:opacity-80"
                     style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
                   >
                     Reject
@@ -254,7 +276,7 @@ export default function IdeasPage() {
                       handleBuild(selectedIdea.id);
                       setSelectedIdea(null);
                     }}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium"
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer hover:opacity-80"
                     style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
                   >
                     <Rocket className="w-4 h-4" />

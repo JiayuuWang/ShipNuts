@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { v4 as uuidv4 } from 'uuid';
 import type Database from 'better-sqlite3';
 import type { WSManager } from '../ws/index.js';
 import { createIdeasRouter } from './ideas.js';
@@ -19,10 +20,11 @@ export function createApiRouter(db: Database.Database, wsManager: WSManager): Ro
       const { loadConfig } = await import('../config.js');
       const config = loadConfig(db);
       const pipeline = new Pipeline(db, wsManager, config);
-      pipeline.runGatherAndAnalyze().catch((err: Error) => {
+      const pipelineId = uuidv4();
+      pipeline.runGatherAndAnalyze(pipelineId).catch((err: Error) => {
         console.error('Gather pipeline error:', err);
       });
-      res.json({ success: true, data: { message: 'Gather pipeline started' } });
+      res.json({ success: true, data: { pipelineId, message: 'Gather pipeline started' } });
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message });
     }
