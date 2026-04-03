@@ -6,6 +6,9 @@ import type { AgentStreamMessage } from './agent.js';
 import { mineIdeas } from './miner.js';
 import { analyzeIdeas } from './analyzer.js';
 import { buildProject } from './builder.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('Pipeline');
 
 /**
  * Pipeline orchestrates the full idea-to-project workflow.
@@ -44,7 +47,7 @@ export class Pipeline {
    */
   async runGatherAndAnalyze(pipelineId?: string): Promise<string> {
     const id = pipelineId || uuidv4();
-    console.log(`Pipeline [${id}]: Starting gather phase...`);
+    log.info(`[${id}] Starting gather phase...`);
 
     // === GATHER PHASE ===
     this.broadcastStatus({
@@ -86,7 +89,7 @@ export class Pipeline {
       throw error;
     }
 
-    console.log(`Pipeline [${id}]: Gathered ${rawIdeas.length} raw ideas`);
+    log.info(`[${id}] Gathered ${rawIdeas.length} raw ideas`);
 
     this.broadcastStatus({
       pipelineId: id,
@@ -97,12 +100,12 @@ export class Pipeline {
     });
 
     if (rawIdeas.length === 0) {
-      console.log(`Pipeline [${id}]: No ideas found, stopping`);
+      log.info(`[${id}] No ideas found, stopping`);
       return id;
     }
 
     // === ANALYZE PHASE ===
-    console.log(`Pipeline [${id}]: Starting analysis phase...`);
+    log.info(`[${id}] Starting analysis phase...`);
     this.broadcastStatus({
       pipelineId: id,
       phase: 'analyze',
@@ -151,7 +154,7 @@ export class Pipeline {
       throw error;
     }
 
-    console.log(`Pipeline [${id}]: ${analyzedIdeas.length} ideas passed analysis filters`);
+    log.info(`[${id}] ${analyzedIdeas.length} ideas passed analysis filters`);
 
     this.broadcastStatus({
       pipelineId: id,
@@ -187,7 +190,7 @@ export class Pipeline {
       });
     }
 
-    console.log(`Pipeline [${id}]: Saved ${analyzedIdeas.length} ideas to database`);
+    log.info(`[${id}] Saved ${analyzedIdeas.length} ideas to database`);
     return id;
   }
 
@@ -196,7 +199,7 @@ export class Pipeline {
    */
   async runBuild(ideaId: string, projectId: string, pipelineId?: string): Promise<string> {
     const id = pipelineId || uuidv4();
-    console.log(`Pipeline [${id}]: Starting build for idea ${ideaId}...`);
+    log.info(`[${id}] Starting build for idea ${ideaId}...`);
 
     const row = this.db.prepare('SELECT * FROM ideas WHERE id = ?').get(ideaId) as any;
     if (!row) {

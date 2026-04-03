@@ -1,6 +1,9 @@
 import { runAgentJSON } from './agent.js';
 import type { AgentStreamMessage } from './agent.js';
 import type { RawIdea } from '@shipnuts/shared';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('Miner');
 
 export interface MineOptions {
   sources: string[];
@@ -26,7 +29,7 @@ export async function mineIdeas(options: MineOptions): Promise<RawIdea[]> {
     if (result.status === 'fulfilled' && result.value) {
       allIdeas.push(...result.value);
     } else if (result.status === 'rejected') {
-      console.error('Mining failed for a source:', result.reason);
+      log.error('Mining failed for a source:', result.reason);
     }
   }
 
@@ -51,7 +54,7 @@ async function mineFromSource(
   });
 
   if (!result.success || !result.data) {
-    console.error(`Mining from ${source} failed:`, result.error);
+    log.error(`Mining from ${source} failed:`, result.error);
     return [];
   }
 

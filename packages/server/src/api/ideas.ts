@@ -3,6 +3,9 @@ import { v4 as uuidv4 } from 'uuid';
 import type Database from 'better-sqlite3';
 import type { Idea, ApiResponse } from '@shipnuts/shared';
 import type { WSManager } from '../ws/index.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('API');
 
 export function createIdeasRouter(db: Database.Database, wsManager: WSManager): Router {
   const router = Router();
@@ -49,10 +52,10 @@ export function createIdeasRouter(db: Database.Database, wsManager: WSManager): 
       const config = loadConfig(db);
       const pipeline = new Pipeline(db, wsManager, config);
       pipeline.runBuild(req.params.id, projectId, pipelineId).catch((err: Error) => {
-        console.error('Build failed:', err);
+        log.error('Build failed:', err);
       });
     } catch (error) {
-      console.error('Failed to start build:', error);
+      log.error('Failed to start build:', error);
     }
 
     res.json({ success: true, data: { projectId, pipelineId } });

@@ -5,6 +5,9 @@ import type { WSManager } from '../ws/index.js';
 import { createIdeasRouter } from './ideas.js';
 import { createProjectsRouter } from './projects.js';
 import { createConfigRouter } from './config.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('API');
 
 export function createApiRouter(db: Database.Database, wsManager: WSManager): Router {
   const router = Router();
@@ -22,7 +25,7 @@ export function createApiRouter(db: Database.Database, wsManager: WSManager): Ro
       const pipeline = new Pipeline(db, wsManager, config);
       const pipelineId = uuidv4();
       pipeline.runGatherAndAnalyze(pipelineId).catch((err: Error) => {
-        console.error('Gather pipeline error:', err);
+        log.error('Gather pipeline error:', err);
       });
       res.json({ success: true, data: { pipelineId, message: 'Gather pipeline started' } });
     } catch (error: any) {

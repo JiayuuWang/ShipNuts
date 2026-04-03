@@ -2,6 +2,9 @@ import cron from 'node-cron';
 import type Database from 'better-sqlite3';
 import type { UserConfig } from '@shipnuts/shared';
 import type { WSManager } from '../ws/index.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('Scheduler');
 
 export class Scheduler {
   private db: Database.Database;
@@ -17,7 +20,7 @@ export class Scheduler {
 
   start(): void {
     const cronExpr = this.buildCronExpression();
-    console.log(`Scheduler started with cron: ${cronExpr}`);
+    log.info(`Started with cron: ${cronExpr}`);
     this.task = cron.schedule(cronExpr, () => {
       this.run();
     });
@@ -27,7 +30,7 @@ export class Scheduler {
     if (this.task) {
       this.task.stop();
       this.task = null;
-      console.log('Scheduler stopped');
+      log.info('Stopped');
     }
   }
 
@@ -56,14 +59,13 @@ export class Scheduler {
   }
 
   private async run(): Promise<void> {
-    console.log('Scheduler triggered: starting gather + analyze pipeline');
-    // Pipeline will be implemented in the brain module
+    log.info('Triggered: starting gather + analyze pipeline');
     try {
       const { Pipeline } = await import('../brain/pipeline.js');
       const pipeline = new Pipeline(this.db, this.wsManager, this.config);
       await pipeline.runGatherAndAnalyze();
     } catch (error) {
-      console.error('Pipeline error:', error);
+      log.error('Pipeline error:', error);
     }
   }
 }

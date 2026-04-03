@@ -1,6 +1,9 @@
 import { runAgentJSON } from './agent.js';
 import type { AgentStreamMessage } from './agent.js';
 import type { RawIdea, IdeaAnalysis } from '@shipnuts/shared';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('Analyzer');
 
 export interface AnalyzeOptions {
   ideas: RawIdea[];
@@ -75,7 +78,7 @@ async function analyzeOneIdea(
   });
 
   if (!result.success || !result.data) {
-    console.error(`Analysis failed for "${idea.title}":`, result.error);
+    log.error(`Analysis failed for "${idea.title}":`, result.error);
     return null;
   }
 

@@ -37,74 +37,193 @@ ShipNuts Core
 ## Prerequisites
 
 - **Node.js >= 20** — [Download](https://nodejs.org/)
-- **Claude Code CLI** — 需要已安装并完成身份认证（用于 Agent SDK 调用）
-- **GitHub Personal Access Token**（可选）— 如果需要自动创建仓库并推送代码，需在 Dashboard Settings 页面配置
+- **Claude Code CLI** — Must be installed and authenticated (see [Claude Code Setup](#claude-code-setup) below)
+- **GitHub Personal Access Token** (optional) — Required only if you want to auto-create repos and push code
 
-> **数据库说明**: 项目使用 SQLite（嵌入式数据库），**无需单独安装或启动任何数据库服务**。首次启动时会自动在 `packages/server/data/` 目录下创建 `shipnuts.db` 文件。
+> **Database**: ShipNuts uses SQLite (an embedded database). **No separate database installation or startup is required.** The database file is automatically created at `packages/server/data/shipnuts.db` on first run.
+
+## Claude Code Setup
+
+ShipNuts uses the [Claude Code Agent SDK](https://docs.anthropic.com/en/docs/claude-code/sdk) to run autonomous agents. The SDK spawns Claude Code CLI processes under the hood, so **the CLI must be installed and properly authenticated before running ShipNuts**.
+
+### Step 1: Install Claude Code CLI
+
+```bash
+npm install -g @anthropic-ai/claude-code
+```
+
+Verify the installation:
+
+```bash
+claude --version
+```
+
+### Step 2: Authenticate
+
+Claude Code needs a valid API key to call Anthropic's API. There are several ways to provide it:
+
+#### Option A: Anthropic API Key (Recommended)
+
+Set the `ANTHROPIC_API_KEY` environment variable:
+
+```bash
+# Linux / macOS
+export ANTHROPIC_API_KEY=your-api-key
+
+# Windows (PowerShell)
+$env:ANTHROPIC_API_KEY = "your-api-key"
+
+# Windows (CMD)
+set ANTHROPIC_API_KEY=your-api-key
+```
+
+You can get an API key from the [Anthropic Console](https://console.anthropic.com/settings/keys).
+
+To make it permanent, add it to your shell profile (`~/.bashrc`, `~/.zshrc`) or system environment variables.
+
+#### Option B: Claude Code Login (OAuth)
+
+If you have a Claude Pro/Team/Enterprise subscription:
+
+```bash
+claude login
+```
+
+This opens a browser for OAuth authentication. Once completed, Claude Code will use your account credentials.
+
+#### Option C: Third-Party API Providers
+
+If you use a third-party API provider (e.g., OpenRouter, API proxy services, or a self-hosted gateway), you need to set **both** the API key and the base URL.
+
+**Environment variables:**
+
+```bash
+# Linux / macOS
+export ANTHROPIC_API_KEY=your-provider-api-key
+export ANTHROPIC_BASE_URL=https://your-provider.com/v1
+
+# Windows (PowerShell)
+$env:ANTHROPIC_API_KEY = "your-provider-api-key"
+$env:ANTHROPIC_BASE_URL = "https://your-provider.com/v1"
+
+# Windows (CMD)
+set ANTHROPIC_API_KEY=your-provider-api-key
+set ANTHROPIC_BASE_URL=https://your-provider.com/v1
+```
+
+**Claude Code CLI configuration (persistent):**
+
+You can also configure these permanently via the Claude Code CLI so you don't need to set environment variables every time:
+
+```bash
+claude config set --global apiKey your-provider-api-key
+claude config set --global apiBaseUrl https://your-provider.com/v1
+```
+
+**Common third-party provider examples:**
+
+| Provider | Base URL | Notes |
+|----------|----------|-------|
+| OpenRouter | `https://openrouter.ai/api/v1` | Set `ANTHROPIC_API_KEY` to your OpenRouter key |
+| Custom Proxy | `https://your-proxy.example.com/v1` | Must be compatible with the Anthropic API format |
+| AWS Bedrock | N/A | Use `claude config set --global apiProvider bedrock` instead |
+| Google Vertex AI | N/A | Use `claude config set --global apiProvider vertex` instead |
+
+> **Important**: The base URL should point to the API root (typically ending in `/v1`). Do **not** include the `/messages` path — the SDK appends it automatically.
+
+> **Tip**: If your provider requires a custom model name mapping, note that ShipNuts defaults to `claude-sonnet-4-6`. Make sure your provider supports this model identifier or adjust the `model` parameter in `packages/server/src/brain/agent.ts`.
+
+### Step 3: Verify Authentication
+
+Run a quick test to confirm Claude Code works:
+
+```bash
+claude -p "Say hello"
+```
+
+If you see a response, authentication is working. If you get an `invalid_api_key` or `401` error, double-check your API key and environment variables.
+
+### Troubleshooting Authentication
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `invalid_api_key` / `401` | API key is missing, expired, or invalid | Re-check `ANTHROPIC_API_KEY`; generate a new key if needed |
+| `Failed to authenticate` | Claude Code CLI cannot reach the API | Check network/proxy settings; verify `ANTHROPIC_BASE_URL` if using a third-party provider |
+| `billing_error` | Account has no active billing | Add a payment method at [console.anthropic.com](https://console.anthropic.com) |
+| `rate_limit` | Too many concurrent requests | Reduce `Agent Concurrency` in Settings, or wait and retry |
+
+> **Important**: The environment variable must be set in the **same terminal session** where you run `npm run dev`. If you set it in one terminal but start ShipNuts in another, the key won't be available.
 
 ## Quick Start
 
 ```bash
-# 1. 克隆项目
+# 1. Clone the project
 git clone <repo-url>
 cd ShipNuts
 
-# 2. 安装依赖（所有子包会通过 npm workspaces 一并安装）
+# 2. Install dependencies (all sub-packages are installed via npm workspaces)
 npm install
 
-# 3. 构建 shared 类型包（server 和 web 都依赖它）
+# 3. Build the shared types package (required by both server and web)
 npm run build:shared
 
-# 4. 启动开发环境（同时启动后端 + 前端）
+# 4. Make sure Claude Code is authenticated (see Claude Code Setup above)
+# 5. Start development mode (backend + frontend concurrently)
 npm run dev
 ```
 
-启动成功后会看到：
+On successful startup you will see:
 
-- **后端 API**: http://localhost:3456
-- **前端 Dashboard**: http://localhost:5173（开发模式下自动代理 API 请求到后端）
-- **WebSocket**: ws://localhost:3456/ws
-
-也可以分别单独启动：
-
-```bash
-npm run dev:server   # 仅启动后端
-npm run dev:web      # 仅启动前端
+```
+10:05:31.039 INFO  [Server] Starting ShipNuts server...
+10:05:31.089 INFO  [Server] Server running on http://localhost:3456
+10:05:31.089 INFO  [Server] WebSocket available at ws://localhost:3456/ws
 ```
 
-### 生产构建
+- **Backend API**: http://localhost:3456
+- **Dashboard**: http://localhost:5173 (Vite dev server proxies API requests to the backend)
+- **WebSocket**: ws://localhost:3456/ws
+
+You can also start services individually:
 
 ```bash
-# 构建所有包（shared -> server -> web，按依赖顺序）
+npm run dev:server   # Backend only
+npm run dev:web      # Frontend only
+```
+
+### Production Build
+
+```bash
+# Build all packages (shared -> server -> web, in dependency order)
 npm run build
 
-# 启动生产服务
+# Start production server
 npm run start
 ```
 
 ## Configuration
 
-首次启动时系统会使用以下默认配置，可通过 Dashboard 的 Settings 页面（http://localhost:5173/settings）修改：
+On first startup, the system uses default configuration. You can modify settings via the Dashboard at http://localhost:5173/settings.
 
-| 配置项 | 默认值 | 说明 |
-|--------|--------|------|
-| 自动采集 | 关闭 | 开启后按设定频率自动从数据源采集 idea |
-| 采集频率 | 每天 09:00 | 支持每小时 / 每天 / 每周 |
-| 数据源 | Hacker News, GitHub Trending | 可选 Reddit, Product Hunt, RSS |
-| 最低 Gap 分数 | 6 (满分 10) | 市场空白度筛选阈值 |
-| 最低 Value 分数 | 50 (满分 100) | 项目价值筛选阈值 |
-| 最大复杂度 | medium | 过滤掉复杂度过高的 idea |
-| GitHub Token | 空 | 配置后可自动创建仓库并推送代码 |
-| Agent 并发数 | 2 | Claude Code 同时运行的最大任务数 |
-| Agent 超时 | 600000ms (10分钟) | 单个 Agent 任务的最大执行时间 |
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Auto Gather | Off | Enable to automatically gather ideas on a schedule |
+| Frequency | Daily at 09:00 | Hourly / Daily / Weekly |
+| Sources | Hacker News, GitHub Trending | Also available: Reddit, Product Hunt, RSS |
+| Min Gap Score | 6 (out of 10) | Minimum market gap score to keep an idea |
+| Min Value Score | 50 (out of 100) | Minimum value score to keep an idea |
+| Max Complexity | Medium | Filter out ideas above this complexity level |
+| GitHub Token | Empty | Set to enable auto-publishing projects to GitHub |
+| Agent Concurrency | 2 | Max concurrent Claude Code agent tasks |
+| Agent Timeout | 600000ms (10 min) | Max execution time per agent task |
 
-也可以通过 REST API 管理配置：
+Settings can also be managed via the REST API:
 
 ```bash
-# 获取当前配置
+# Get current config
 curl http://localhost:3456/api/config
 
-# 更新配置
+# Update config
 curl -X PUT http://localhost:3456/api/config \
   -H "Content-Type: application/json" \
   -d '{"schedule":{"enabled":true,"frequency":"daily","hour":9,"minute":0},...}'
@@ -112,50 +231,50 @@ curl -X PUT http://localhost:3456/api/config \
 
 ## Usage
 
-1. **采集 Idea** — 在 Ideas 页面点击 "Gather Ideas" 按钮手动触发，或在 Settings 中开启自动采集
-2. **浏览 & 筛选** — Ideas 列表展示所有采集到的 idea，包含 Gap 分数、Value 分数、复杂度等分析结果
-3. **构建项目** — 对感兴趣的 idea 点击 "Build"，Claude Code 将自动完成编码、测试、文档
-4. **查看进度** — 在 Projects 页面查看构建进度、日志和 GitHub 仓库链接
+1. **Gather Ideas** — Click "Gather Ideas" on the Ideas page, or enable auto-gathering in Settings
+2. **Browse & Filter** — The Ideas list shows all gathered ideas with Gap score, Value score, and complexity analysis
+3. **Build a Project** — Click "Build" on any idea; Claude Code will autonomously write the code, tests, and documentation
+4. **Track Progress** — Monitor build progress, logs, and GitHub repo links on the Projects page
 
 ## Project Structure
 
 ```
 packages/
-├── shared/          # 共享 TypeScript 类型定义
-├── server/          # 后端服务
+├── shared/          # Shared TypeScript type definitions
+├── server/          # Backend service
 │   ├── src/
-│   │   ├── api/     # REST API 路由
-│   │   ├── brain/   # Claude Code Agent 集成
-│   │   │   ├── agent.ts    # Agent SDK 封装
-│   │   │   ├── miner.ts    # Idea 采集（多数据源）
-│   │   │   ├── analyzer.ts # Idea 分析（Gap/Value/Feasibility）
-│   │   │   ├── builder.ts  # 项目生成（vibe coding + GitHub 推送）
-│   │   │   └── pipeline.ts # 流程编排
-│   │   ├── db/      # SQLite 数据库（自动创建，无需手动配置）
-│   │   ├── scheduler/ # Cron 定时任务
-│   │   └── ws/      # WebSocket 实时推送
-│   └── data/        # SQLite 数据库文件（自动生成，已 gitignore）
+│   │   ├── api/     # REST API routes
+│   │   ├── brain/   # Claude Code Agent integration
+│   │   │   ├── agent.ts    # Agent SDK wrapper
+│   │   │   ├── miner.ts    # Idea mining (multi-source)
+│   │   │   ├── analyzer.ts # Idea analysis (Gap/Value/Feasibility)
+│   │   │   ├── builder.ts  # Project generation (vibe coding + GitHub push)
+│   │   │   └── pipeline.ts # Workflow orchestration
+│   │   ├── db/      # SQLite database (auto-created, no manual setup)
+│   │   ├── scheduler/ # Cron job scheduling
+│   │   └── ws/      # WebSocket real-time updates
+│   └── data/        # SQLite database files (auto-generated, gitignored)
 └── web/             # React Dashboard
     └── src/
-        ├── pages/   # Ideas / Projects / Settings 页面
-        ├── components/ # Layout 等 UI 组件
-        └── lib/     # API 客户端 / WebSocket 客户端
+        ├── pages/   # Ideas / Projects / Settings pages
+        ├── components/ # Layout, PipelinePanel, UI components
+        └── lib/     # API client, WebSocket client
 ```
 
 ## API
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | /api/ideas | 获取 idea 列表 |
-| GET | /api/ideas/:id | 获取 idea 详情 |
-| POST | /api/ideas/:id/build | 开始构建项目 |
-| PATCH | /api/ideas/:id | 更新 idea 状态 |
-| GET | /api/projects | 获取项目列表 |
-| GET | /api/projects/:id | 获取项目详情 |
-| GET | /api/config | 获取配置 |
-| PUT | /api/config | 更新配置 |
-| POST | /api/gather | 手动触发 idea 采集 |
-| GET | /api/health | 健康检查 |
+| GET | /api/ideas | List all ideas |
+| GET | /api/ideas/:id | Get idea details |
+| POST | /api/ideas/:id/build | Start building a project from an idea |
+| PATCH | /api/ideas/:id | Update idea status |
+| GET | /api/projects | List all projects |
+| GET | /api/projects/:id | Get project details |
+| GET | /api/config | Get configuration |
+| PUT | /api/config | Update configuration |
+| POST | /api/gather | Trigger idea gathering |
+| GET | /api/health | Health check |
 
 ## License
 

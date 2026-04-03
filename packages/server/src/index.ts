@@ -7,11 +7,13 @@ import { createApiRouter } from './api/index.js';
 import { Scheduler } from './scheduler/index.js';
 import { WSManager } from './ws/index.js';
 import { loadConfig } from './config.js';
+import { createLogger } from './logger.js';
 
+const log = createLogger('Server');
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3456;
 
 async function main() {
-  console.log('Starting ShipNuts server...');
+  log.info('Starting ShipNuts server...');
 
   // Initialize database
   const db = initDatabase();
@@ -42,13 +44,13 @@ async function main() {
 
   // Start server
   server.listen(PORT, () => {
-    console.log(`ShipNuts server running on http://localhost:${PORT}`);
-    console.log(`WebSocket available at ws://localhost:${PORT}/ws`);
+    log.info(`Server running on http://localhost:${PORT}`);
+    log.info(`WebSocket available at ws://localhost:${PORT}/ws`);
   });
 
   // Graceful shutdown
   process.on('SIGINT', () => {
-    console.log('Shutting down...');
+    log.info('Shutting down...');
     scheduler.stop();
     wss.close();
     server.close();
@@ -57,4 +59,4 @@ async function main() {
   });
 }
 
-main().catch(console.error);
+main().catch((err) => log.error('Startup failed:', err));
