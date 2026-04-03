@@ -62,9 +62,32 @@ claude --version
 
 Claude Code needs a valid API key to call Anthropic's API. There are several ways to provide it:
 
-#### Option A: Anthropic API Key (Recommended)
+#### Option A: `.env` File (Recommended)
 
-Set the `ANTHROPIC_API_KEY` environment variable:
+The easiest way is to create a `.env` file in the project root. ShipNuts automatically loads it on startup.
+
+```bash
+# Copy the example file
+cp .env.example .env
+
+# Then edit .env with your values
+```
+
+`.env` file contents:
+
+```env
+# Required: Your Anthropic API key (or third-party provider key)
+ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxxx
+
+# Optional: Custom API base URL for third-party providers
+# ANTHROPIC_BASE_URL=https://your-provider.com/v1
+```
+
+> The `.env` file is gitignored and will never be committed. You can place it either in the project root (`ShipNuts/.env`) or in the server package (`ShipNuts/packages/server/.env`) — the root location takes priority.
+
+#### Option B: Environment Variables
+
+Set the `ANTHROPIC_API_KEY` environment variable directly in your terminal:
 
 ```bash
 # Linux / macOS
@@ -81,7 +104,7 @@ You can get an API key from the [Anthropic Console](https://console.anthropic.co
 
 To make it permanent, add it to your shell profile (`~/.bashrc`, `~/.zshrc`) or system environment variables.
 
-#### Option B: Claude Code Login (OAuth)
+#### Option C: Claude Code Login (OAuth)
 
 If you have a Claude Pro/Team/Enterprise subscription:
 
@@ -91,11 +114,18 @@ claude login
 
 This opens a browser for OAuth authentication. Once completed, Claude Code will use your account credentials.
 
-#### Option C: Third-Party API Providers
+#### Option D: Third-Party API Providers
 
 If you use a third-party API provider (e.g., OpenRouter, API proxy services, or a self-hosted gateway), you need to set **both** the API key and the base URL.
 
-**Environment variables:**
+**`.env` file (recommended):**
+
+```env
+ANTHROPIC_API_KEY=your-provider-api-key
+ANTHROPIC_BASE_URL=https://your-provider.com/v1
+```
+
+**Or via environment variables:**
 
 ```bash
 # Linux / macOS
@@ -152,7 +182,7 @@ If you see a response, authentication is working. If you get an `invalid_api_key
 | `billing_error` | Account has no active billing | Add a payment method at [console.anthropic.com](https://console.anthropic.com) |
 | `rate_limit` | Too many concurrent requests | Reduce `Agent Concurrency` in Settings, or wait and retry |
 
-> **Important**: The environment variable must be set in the **same terminal session** where you run `npm run dev`. If you set it in one terminal but start ShipNuts in another, the key won't be available.
+> **Important**: If you use environment variables (not `.env` file), they must be set in the **same terminal session** where you run `npm run dev`. Using a `.env` file avoids this issue entirely.
 
 ## Quick Start
 
@@ -167,7 +197,10 @@ npm install
 # 3. Build the shared types package (required by both server and web)
 npm run build:shared
 
-# 4. Make sure Claude Code is authenticated (see Claude Code Setup above)
+# 4. Configure your API key (copy the example and edit)
+cp .env.example .env
+# Edit .env and set ANTHROPIC_API_KEY (see Claude Code Setup above)
+
 # 5. Start development mode (backend + frontend concurrently)
 npm run dev
 ```

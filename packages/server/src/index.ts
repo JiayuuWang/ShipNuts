@@ -1,3 +1,20 @@
+import { config as dotenvConfig } from 'dotenv';
+import { existsSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Load .env from project root or server package root
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootEnv = path.resolve(__dirname, '../../../.env');
+const localEnv = path.resolve(__dirname, '../../.env');
+if (existsSync(rootEnv)) {
+  dotenvConfig({ path: rootEnv });
+} else if (existsSync(localEnv)) {
+  dotenvConfig({ path: localEnv });
+} else {
+  dotenvConfig();
+}
+
 import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
